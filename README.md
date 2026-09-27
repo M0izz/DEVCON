@@ -48,7 +48,7 @@ npm test
 npm run typecheck
 ```
 
-The integration test uses local synthetic 402 responses to prove the hostile quotes are refused before signing. It does not claim a testnet transfer. A full testnet payment run requires a funded wallet and an LLM key configured on the machine running this repo; no payment record is fabricated or committed as if it were on-chain evidence.
+The committed `records/testnet-rogue-refusals.jsonl` is from a live run against these local sellers returning Base Sepolia x402 requirements: both hostile offers were refused before signing, and no payment was sent. It is a real quote/refusal record, not proof of a testnet transfer. The integration test additionally uses synthetic 402 responses to exercise the refusal boundary. A successful honest-stall testnet payment requires a funded wallet and an LLM key configured on the machine running this repo; no on-chain payment record is fabricated.
 
 ## Audit Events
 

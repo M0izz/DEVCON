@@ -141,6 +141,8 @@ export function createPaidFetch(config: BuyerConfig): {
         const response = await fetchWithPayment(url);
         if (activeDecision?.approved && activeEventId) {
           const paid = response.ok;
+          const paymentResponse = response.headers.get("PAYMENT-RESPONSE")
+            ?? response.headers.get("X-PAYMENT-RESPONSE");
           config.audit.write({
             eventId: activeEventId,
             event: "payment_outcome",
@@ -149,6 +151,7 @@ export function createPaidFetch(config: BuyerConfig): {
             source: activeSource,
             httpStatus: response.status,
             amountAtomic: activeDecision.amount.toString(),
+            paymentResponse,
           });
         }
         return response;
