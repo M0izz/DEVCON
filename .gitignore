@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+records/*.jsonl
+!records/testnet-rogue-refusals.jsonl
+research.md
