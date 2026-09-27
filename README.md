@@ -6,9 +6,9 @@ A small x402 research agent with a hard-coded payment boundary, two honest data 
 
 The model can choose a named tool source, but it cannot provide a URL, token, payee, chain, or budget. Before `@x402/fetch` is allowed to create a payment payload, `src/buyer.ts` reads the seller's 402 requirements and calls `decidePayment` in `src/policy.ts`. That policy requires the exact scheme, Base Sepolia (`eip155:84532`), the canonical Base Sepolia USDC contract, the configured trusted payee, an integer atomic amount, a per-call ceiling, and enough remaining run budget. The x402 client's own spend controls apply a second per-payment cap.
 
-The default per-call limit is `250000` atomic units ($0.25); the default run budget is `5000000` ($5). Every arithmetic comparison uses `BigInt`. An accepted quote is reserved before signing, so failures consume budget for the rest of that run rather than creating a retry-based overspend path.
+The default per-call limit is `250000` atomic units ($0.25); the default run budget is `5000000` ($5). Every arithmetic comparison uses `BigInt`. An accepted quote is durably appended and flushed before signing, so failures consume budget for the rest of that run rather than creating a retry-based overspend path. On startup, the buyer reconstructs reserved spend from approved entries in the same audit file; restart with that path to resume the budget, or choose a new `AUDIT_PATH` for a fresh run.
 
-Each decision is appended to `records/run.jsonl` before payment payload creation. Accepted requests get a second `payment_outcome` event after the seller responds; a successful seller response is recorded as `paid`, while transport or settlement errors are marked `failed_or_unconfirmed`. A `paid` event means the x402 fetch completed with an HTTP success after SDK payment handling; retain the seller's `PAYMENT-RESPONSE` and verify its transaction on Base Sepolia if you need independent settlement proof.
+Each decision is appended to `records/run.jsonl` before payment payload creation. Accepted requests get a second `payment_outcome` event after the seller responds. The buyer decodes the x402 settlement receipt and records `paid` only when its `success` field is true; the event includes the transaction, network, payer, and actual settled amount when present. Missing or malformed receipts are `failed_or_unconfirmed`, not `paid`.
 
 ## Setup
 
@@ -48,7 +48,7 @@ npm test
 npm run typecheck
 ```
 
-The committed `records/testnet-rogue-refusals.jsonl` is from a live run against these local sellers returning Base Sepolia x402 requirements: both hostile offers were refused before signing, and no payment was sent. It is a real quote/refusal record, not proof of a testnet transfer. The integration test additionally uses synthetic 402 responses to exercise the refusal boundary. A successful honest-stall testnet payment requires a funded wallet and an LLM key configured on the machine running this repo; no on-chain payment record is fabricated.
+The included `records/testnet-rogue-refusals.jsonl` is from a live run against these local sellers returning Base Sepolia x402 requirements: both hostile offers were refused before signing, and no payment was sent. It is a real quote/refusal record, not proof of a testnet transfer. The integration test additionally uses synthetic 402 responses to exercise the refusal boundary. A successful honest-stall testnet payment requires a funded wallet and an LLM key configured on the machine running this repo; no on-chain payment record is fabricated.
 
 ## Audit Events
 

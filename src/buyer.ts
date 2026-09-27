@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { x402Client, x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
+import {
+  decodePaymentResponseHeader,
+  x402Client,
+  x402HTTPClient,
+  wrapFetchWithPayment,
+} from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { AuditLog } from "./audit.js";
@@ -41,7 +46,7 @@ export function createPaidFetch(config: BuyerConfig): {
   fetchPaid: (url: string) => Promise<Response>;
   getReservedAtomic: () => bigint;
 } {
-  let reservedAtomic = 0n;
+  let reservedAtomic = config.audit.readReservedAtomic();
   let activeDecision: ReturnType<typeof decidePayment> | undefined;
   let activeEventId: string | undefined;
   let activeSource: string | undefined;
@@ -140,18 +145,33 @@ export function createPaidFetch(config: BuyerConfig): {
       try {
         const response = await fetchWithPayment(url);
         if (activeDecision?.approved && activeEventId) {
-          const paid = response.ok;
           const paymentResponse = response.headers.get("PAYMENT-RESPONSE")
             ?? response.headers.get("X-PAYMENT-RESPONSE");
+          let settlement: ReturnType<typeof decodePaymentResponseHeader> | undefined;
+          try {
+            if (paymentResponse) settlement = decodePaymentResponseHeader(paymentResponse);
+          } catch {
+            settlement = undefined;
+          }
+          const paid = settlement?.success === true;
           config.audit.write({
             eventId: activeEventId,
             event: "payment_outcome",
-            outcome: paid ? "paid" : "failed",
-            reason: paid ? "seller_returned_success" : `seller_returned_http_${response.status}`,
+            outcome: paid ? "paid" : settlement ? "failed" : "failed_or_unconfirmed",
+            reason: paid
+              ? response.ok ? "settlement_confirmed" : `settlement_confirmed_seller_http_${response.status}`
+              : settlement?.errorReason ?? (paymentResponse ? "settlement_unsuccessful" : "missing_settlement_receipt"),
             source: activeSource,
             httpStatus: response.status,
             amountAtomic: activeDecision.amount.toString(),
-            paymentResponse,
+            settlement: settlement ? {
+              success: settlement.success,
+              network: settlement.network,
+              transaction: settlement.transaction,
+              amountAtomic: settlement.amount,
+              payer: settlement.payer,
+              errorReason: settlement.errorReason,
+            } : null,
           });
         }
         return response;

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +10,7 @@ import { createPaidFetch } from "../src/buyer.js";
 import { BASE_SEPOLIA, BASE_SEPOLIA_USDC } from "../src/policy.js";
 
 const payTo = "0x1111111111111111111111111111111111111111";
-const developmentOnlyKey = `0x${"11".repeat(32)}` as `0x${string}`;
+const ephemeralTestKey = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
 
 test("the x402 fetch path refuses hostile quotes before creating a payment", async () => {
   const server = createServer((request, response) => {
@@ -33,7 +34,7 @@ test("the x402 fetch path refuses hostile quotes before creating a payment", asy
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const buyer = createPaidFetch({
-    privateKey: developmentOnlyKey,
+    privateKey: ephemeralTestKey,
     payTo,
     maxPerCall: 250_000n,
     totalBudget: 5_000_000n,
@@ -47,6 +48,22 @@ test("the x402 fetch path refuses hostile quotes before creating a payment", asy
     assert.deepEqual(events.map((event) => event.reason), ["per_call_limit", "unsupported_asset"]);
     assert.equal(events.every((event) => event.decision === "refused"), true);
     assert.equal(buyer.getReservedAtomic(), 0n);
+
+    const restartedAudit = new AuditLog(auditPath);
+    restartedAudit.write({
+      eventId: "persisted-reservation",
+      event: "payment_decision",
+      decision: "approved",
+      amountAtomic: "4990000",
+    });
+    const restartedBuyer = createPaidFetch({
+      privateKey: ephemeralTestKey,
+      payTo,
+      maxPerCall: 250_000n,
+      totalBudget: 5_000_000n,
+      audit: new AuditLog(auditPath),
+    });
+    assert.equal(restartedBuyer.getReservedAtomic(), 4_990_000n);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     rmSync(directory, { recursive: true, force: true });
